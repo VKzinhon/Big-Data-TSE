@@ -1,0 +1,7 @@
+# Dados brutos (CSVs grandes - nao versionar)
+etl/data_raw/
+
+# Ambiente Python
+venv/
+__pycache__/
+*.pyc
