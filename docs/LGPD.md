@@ -1,75 +1,32 @@
-# LGPD — Dados pessoais nos arquivos do TSE
+# LGPD — dados pessoais nas bases do TSE
 
-Documentacao do passo 6: identificacao de dados sensiveis e decisao de tratamento
-antes da carga no banco de dados.
+Os CSVs públicos de candidatura e prestação de contas de 2024 trazem identificadores que não são necessários para a pergunta do projeto (quem se candidata e como o dinheiro se distribui por gênero, raça e cargo).
 
-## Fonte dos dados
+## Decisão
 
-- **Origem:** dados abertos do TSE (Eleicoes Municipais 2024)
-- **Uso:** atividade academica (pipeline ETL + dashboard)
-- **Local no projeto:** `etl/data_raw/` (nao versionado no Git)
+Remover esses campos na transformação, antes de gravar o parquet e antes de subir ao PostgreSQL. O cruzamento usa `SQ_CANDIDATO`, identificador da candidatura publicado pelo TSE, sem CPF.
 
-## Colunas sensiveis identificadas
+| Coluna | Onde aparece | Motivo |
+|---|---|---|
+| `NR_CPF_CANDIDATO` | Candidatos | CPF do candidato |
+| `NR_CPF_VICE_CANDIDATO` | Candidatos | CPF do vice |
+| `NR_TITULO_ELEITORAL_CANDIDATO` | Candidatos | Título de eleitor |
+| `DS_EMAIL` | Candidatos | Contato pessoal |
+| `DT_NASCIMENTO` | Candidatos | Data de nascimento |
+| `NR_CPF_CNPJ_DOADOR` | Receitas | CPF ou CNPJ de quem doou |
+| `NM_DOADOR`, `NM_DOADOR_RFB` | Receitas | Nome de quem doou |
+| `NR_CPF_CNPJ_FORNECEDOR` | Despesas | CPF ou CNPJ do fornecedor |
+| `NM_FORNECEDOR`, `NM_FORNECEDOR_RFB` | Despesas | Nome do fornecedor |
+| `NR_CNPJ_PRESTADOR_CONTA` | Prestação de contas | CNPJ do prestador |
 
-### CPF e documentos de identificacao
+A lista usada pelo código está em `etl/lgpd_columns.py`.
 
-| Coluna | Arquivo(s) | Descricao |
-|--------|------------|-----------|
-| `NR_CPF_CANDIDATO` | candidatos, receitas, despesas contratadas | CPF do candidato |
-| `NR_CPF_VICE_CANDIDATO` | receitas, despesas contratadas | CPF do vice na chapa |
-| `NR_CPF_CNPJ_DOADOR` | receitas | CPF ou CNPJ de quem doou |
-| `NR_CPF_CNPJ_FORNECEDOR` | despesas contratadas | CPF ou CNPJ do fornecedor |
-| `NR_CNPJ_PRESTADOR_CONTA` | receitas, despesas contratadas | CNPJ do prestador de contas |
+## O que permanece
 
-### Outros dados pessoais
+O nome de urna (`NM_URNA_CANDIDATO`) permanece. É o nome público da campanha e a métrica de representatividade não depende do nome civil. A idade na data da posse (`NR_IDADE_DATA_POSSE`) permanece no lugar da data de nascimento, para o recorte de faixa etária.
 
-| Coluna | Arquivo(s) | Descricao |
-|--------|------------|-----------|
-| `DS_EMAIL` | candidatos | E-mail do candidato |
-| `DT_NASCIMENTO` | candidatos | Data de nascimento |
-| `NR_TITULO_ELEITORAL_CANDIDATO` | candidatos | Titulo de eleitor |
-| `NM_CANDIDATO` | varios | Nome civil (dado publico eleitoral, manter com criterio) |
-| `NM_DOADOR`, `NM_FORNECEDOR` | prestacao de contas | Nomes de terceiros |
+Receitas e despesas são lidas só com a chave e o valor. Nome e documento de doador ou fornecedor não entram no DataFrame. A saída soma os valores por candidatura, então o microdado do lançamento também não é armazenado.
 
-### Arquivos sem CPF direto de candidato
+## Base legal de trabalho
 
-- `despesas_pagas_candidatos_2024_*.csv` — nao possui `SQ_CANDIDATO` nem CPF de candidato;
-  usa `SQ_PRESTADOR_CONTAS` para identificar o prestador.
-
-## Mascaramento ja feito pelo TSE
-
-Em amostras dos dados de AC, observamos:
-
-- `NR_CPF_CANDIDATO` = `-4` (codigo TSE para **nao divulgado**)
-- `DS_EMAIL` = `NAO DIVULGAVEL`
-
-**Atencao:** isso **nao** vale para todos os registros. Em receitas e despesas,
-`NR_CPF_CNPJ_DOADOR` e `NR_CPF_CNPJ_FORNECEDOR` podem conter CPF/CNPJ legiveis
-(ex.: CNPJ de diretorio partidario).
-
-## Decisao da equipe
-
-| Tratamento | Colunas | Justificativa |
-|------------|---------|---------------|
-| **Remover** | CPF, CNPJ de terceiros, e-mail, data de nascimento, titulo de eleitor | Minimizacao de dados (LGPD art. 6). A analise usa `SQ_CANDIDATO`, genero, raca, cargo e valores — nao exige documento de identificacao. |
-| **Manter** | `SQ_CANDIDATO`, `DS_GENERO`, `DS_COR_RACA`, `DS_CARGO`, `SG_UF`, valores financeiros | Necessarios para o objetivo do dashboard e do ETL. |
-| **Manter com criterio** | `NM_CANDIDATO`, `NM_URNA_CANDIDATO` | Nomes publicos no contexto eleitoral; sem vinculo a CPF apos remocao das colunas de documento. |
-
-### Alternativas consideradas e descartadas
-
-- **Mascarar** (`***.***.***-12`): ainda expoe parcialmente o documento; desnecessario para nossa analise.
-- **Hashear** (SHA-256 + salt): util se fosse preciso rastrear a mesma pessoa entre bases sem expor CPF; nosso cruzamento ja usa `SQ_CANDIDATO`.
-
-## Implementacao no ETL
-
-Na fase **Transform**, antes de gravar no banco:
-
-1. Remover colunas listadas em `etl/lgpd_columns.py`
-2. Nao incluir dados brutos com CPF em artefatos versionados ou no dashboard
-3. Manter `data_raw/` apenas local e fora do Git (`.gitignore`)
-
-## Base legal (contexto academico)
-
-Dados publicos divulgados pelo TSE para transparencia eleitoral, utilizados em
-ambiente de ensino/pesquisa, com **minimizacao** dos dados pessoais conforme
-principios da LGPD (necessidade, adequacao e transparencia).
+Fonte: Portal de Dados Abertos do TSE. Uso acadêmico, com minimização dos identificadores antes do armazenamento em nuvem.

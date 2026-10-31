@@ -1,5 +1,18 @@
-# Dados brutos (CSVs grandes - nao versionar)
+# Dados brutos e base tratada (arquivos grandes - nao versionar)
 etl/data_raw/
+etl/data_processed/*
+!etl/data_processed/.gitkeep
+etl/data_processed_fixture/
+
+# Segredos e estado da infraestrutura
+# O state do Terraform guarda a senha do banco. Nao versionar.
+.env
+!.env.example
+*.tfvars
+!*.tfvars.example
+.terraform/
+*.tfstate
+*.tfstate.*
 
 # Ambiente Python
 venv/
