@@ -19,7 +19,8 @@ ARQUIVO_DESPESAS = "despesas_contratadas_candidatos_2024_{uf}.csv"
 CHAVE = "SQ_CANDIDATO"
 READ_OPTS = {"sep": ";", "encoding": "latin-1"}
 
-SENTINELAS_TEXTO = ["#NULO#", "#NULO", "#NE#", "#NE", "-1"]
+SENTINELAS_TEXTO = ["#NULO#", "#NULO", "#NE#", "#NE", "-1", "-3", "-4"]
+SENTINELAS_NUMERICAS = [-1, -3, -4]
 
 # Idade acima disso vem de data de nascimento invalida na fonte e vira nulo.
 IDADE_MAXIMA = 120

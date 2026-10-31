@@ -30,6 +30,7 @@ from modelo import (
     PRESTACAO_DIR,
     READ_OPTS,
     RENOMEAR_CANDIDATURA,
+    SENTINELAS_NUMERICAS,
     SENTINELAS_TEXTO,
 )
 
@@ -44,11 +45,13 @@ def normalizar_chave(serie: pd.Series) -> pd.Series:
 
 def para_numero(serie: pd.Series) -> pd.Series:
     if pd.api.types.is_numeric_dtype(serie) and not pd.api.types.is_object_dtype(serie):
-        return pd.to_numeric(serie, errors="coerce")
-    texto = serie.astype("string").str.strip()
-    texto = texto.str.replace(",", ".", regex=False)
-    texto = texto.replace(SENTINELAS_TEXTO, pd.NA)
-    return pd.to_numeric(texto, errors="coerce")
+        numero = pd.to_numeric(serie, errors="coerce")
+    else:
+        texto = serie.astype("string").str.strip()
+        texto = texto.str.replace(",", ".", regex=False)
+        texto = texto.replace(SENTINELAS_TEXTO, pd.NA)
+        numero = pd.to_numeric(texto, errors="coerce")
+    return numero.mask(numero.isin(SENTINELAS_NUMERICAS))
 
 
 def limpar_texto(serie: pd.Series) -> pd.Series:

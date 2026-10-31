@@ -62,12 +62,58 @@ def para_sql(df: pd.DataFrame) -> pd.DataFrame:
     return saida
 
 
+DDL_PERFIL = """
+CREATE TABLE perfil (
+    sg_uf CHAR(2),
+    ds_genero TEXT,
+    ds_cor_raca TEXT,
+    ds_cargo TEXT,
+    qt_candidaturas INTEGER NOT NULL,
+    vr_receita NUMERIC(16, 2) NOT NULL,
+    vr_despesa_contratada NUMERIC(16, 2) NOT NULL
+)
+"""
+
+SQL_PREENCHER_PERFIL = """
+INSERT INTO perfil (
+    sg_uf, ds_genero, ds_cor_raca, ds_cargo,
+    qt_candidaturas, vr_receita, vr_despesa_contratada
+)
+SELECT
+    c.sg_uf,
+    c.ds_genero,
+    c.ds_cor_raca,
+    c.ds_cargo,
+    COUNT(*)::INTEGER,
+    ROUND(COALESCE(SUM(f.vr_receita), 0), 2),
+    ROUND(COALESCE(SUM(f.vr_despesa_contratada), 0), 2)
+FROM candidatura c
+JOIN financiamento f ON f.sq_candidato = c.sq_candidato
+GROUP BY c.sg_uf, c.ds_genero, c.ds_cor_raca, c.ds_cargo
+"""
+
+
 def recriar_tabelas(engine: Engine) -> None:
     with engine.begin() as conexao:
+        conexao.execute(text("DROP TABLE IF EXISTS perfil"))
         conexao.execute(text("DROP TABLE IF EXISTS financiamento"))
         conexao.execute(text("DROP TABLE IF EXISTS candidatura"))
         conexao.execute(text(DDL_CANDIDATURA))
         conexao.execute(text(DDL_FINANCIAMENTO))
+
+
+def atualizar_perfil(engine: Engine) -> None:
+    """Recria a tabela analitica UF x genero x raca x cargo a partir da carga."""
+    with engine.begin() as conexao:
+        conexao.execute(text("DROP TABLE IF EXISTS perfil"))
+        conexao.execute(text(DDL_PERFIL))
+        conexao.execute(text(SQL_PREENCHER_PERFIL))
+        conexao.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_candidatura_perfil "
+                "ON candidatura (sg_uf, ds_cargo, ds_genero, ds_cor_raca)"
+            )
+        )
 
 
 def carregar(destino: Path, url: str) -> None:
@@ -102,16 +148,33 @@ def carregar(destino: Path, url: str) -> None:
         index=False,
         chunksize=2000,
     )
+    atualizar_perfil(engine)
+    imprimir_volume(engine)
 
+
+def imprimir_volume(engine: Engine) -> None:
     with engine.connect() as conexao:
         n_cand = conexao.execute(text("SELECT COUNT(*) FROM candidatura")).scalar_one()
         n_fin = conexao.execute(text("SELECT COUNT(*) FROM financiamento")).scalar_one()
+        n_perfil = conexao.execute(text("SELECT COUNT(*) FROM perfil")).scalar_one()
         tamanho = conexao.execute(
             text("SELECT pg_size_pretty(pg_database_size(current_database()))")
         ).scalar_one()
     print(f"candidatura: {n_cand} linhas")
     print(f"financiamento: {n_fin} linhas")
+    print(f"perfil: {n_perfil} linhas")
     print(f"tamanho do banco: {tamanho}")
+
+
+def engine_do_env() -> Engine:
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+    url = os.environ.get("DATABASE_URL", "").strip()
+    if not url:
+        raise SystemExit(
+            "Defina DATABASE_URL no arquivo .env com a URI do Terraform "
+            "(terraform output -raw postgresql_service_uri)."
+        )
+    return create_engine(url_sqlalchemy(url), pool_pre_ping=True)
 
 
 def main() -> None:
@@ -122,7 +185,18 @@ def main() -> None:
         default=DATA_PROCESSED,
         help="Pasta com candidatura.parquet e financiamento.parquet",
     )
+    parser.add_argument(
+        "--somente-perfil",
+        action="store_true",
+        help="Recria so a tabela perfil e o indice, sem recarregar as candidaturas.",
+    )
     args = parser.parse_args()
+
+    if args.somente_perfil:
+        engine = engine_do_env()
+        atualizar_perfil(engine)
+        imprimir_volume(engine)
+        return
 
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
     url = os.environ.get("DATABASE_URL", "").strip()
